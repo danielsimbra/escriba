@@ -30,6 +30,7 @@ REGRAS_PADRAO: dict[str, Any] = {
     "audio": {
         "processar_proprios": False,
         "duracao_maxima_segundos": 900,
+        "duracao_minima_segundos": 0,
         "tamanho_maximo_mb": 24,
     },
     "comandos": {"prefixo": "escriba", "apenas_proprio": True},

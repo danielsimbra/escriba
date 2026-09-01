@@ -34,6 +34,12 @@ audio:
   duracao_maxima_segundos: 900
   tamanho_maximo_mb: 24
 
+  # Piso de aproveitamento: áudio MAIS CURTO que isso é ignorado — sem
+  # transcrever e sem avisar na conversa (é filtro de custo, não erro).
+  # Serve para não gastar chamada de API com "oi", "ok", "blz". Ajuste
+  # quando quiser: 40 corta mais; 0 desliga o filtro e transcreve tudo.
+  duracao_minima_segundos: 0
+
 comandos:
   # Palavra que liga/desliga o Escriba dentro de uma conversa autorizada.
   # Reconhece: "escriba on|ligar|ativar", "escriba off|desligar|parar",

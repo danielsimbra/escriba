@@ -111,6 +111,44 @@ def test_falha_de_transcricao_nao_libera_a_reserva(servicos):
     assert "Nao consegui transcrever" in servicos.evolution.enviadas[0][1]
 
 
+def test_audio_abaixo_do_piso_e_ignorado_em_silencio(tmp_path):
+    from escriba.pipeline import Servicos
+    import threading
+    from conftest import LimpadorFalso, TranscritorFalso
+
+    cfg = fazer_settings(tmp_path, regras={"audio": {"duracao_minima_segundos": 40}})
+    srv = Servicos(
+        cfg=cfg, evolution=EvolutionFalsa(), transcritor=TranscritorFalso(),
+        limpador=LimpadorFalso(), estado=Estado(cfg.db_path),
+        semaforo=threading.BoundedSemaphore(2),
+    )
+    pipeline.processar(srv, fazer_audio(segundos=15))
+    assert srv.evolution.enviadas == []
+    assert srv.estado.estatisticas()["total"] == 1
+    assert srv.estado.estatisticas()["ok"] == 0
+
+
+def test_audio_acima_do_piso_transcreve_normalmente(tmp_path):
+    from escriba.pipeline import Servicos
+    import threading
+    from conftest import LimpadorFalso, TranscritorFalso
+
+    cfg = fazer_settings(tmp_path, regras={"audio": {"duracao_minima_segundos": 40}})
+    srv = Servicos(
+        cfg=cfg, evolution=EvolutionFalsa(), transcritor=TranscritorFalso(),
+        limpador=LimpadorFalso(), estado=Estado(cfg.db_path),
+        semaforo=threading.BoundedSemaphore(2),
+    )
+    pipeline.processar(srv, fazer_audio(segundos=45))
+    assert len(srv.evolution.enviadas) == 1
+
+
+def test_piso_zero_desliga_o_filtro(servicos):
+    """Config padrao dos testes ja tem duracao_minima_segundos=0."""
+    pipeline.processar(servicos, fazer_audio(segundos=1))
+    assert len(servicos.evolution.enviadas) == 1
+
+
 # -- casos de conteudo ------------------------------------------------------
 def test_audio_sem_fala_avisa_mesmo_com_avisar_erro_desligado(tmp_path):
     from escriba.pipeline import Servicos

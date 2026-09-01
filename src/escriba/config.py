@@ -131,6 +131,10 @@ class Settings:
         return int(self._audio.get("duracao_maxima_segundos", 900))
 
     @property
+    def duracao_minima(self) -> int:
+        return int(self._audio.get("duracao_minima_segundos", 0))
+
+    @property
     def tamanho_maximo_bytes(self) -> int:
         return int(float(self._audio.get("tamanho_maximo_mb", 24)) * 1024 * 1024)
 

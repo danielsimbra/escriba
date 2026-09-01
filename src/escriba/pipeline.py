@@ -149,6 +149,18 @@ def _processar_audio(srv: Servicos, audio: Audio) -> None:
         log.info("Audio %s ja foi processado antes; ignorando reentrega", audio.message_id)
         return
 
+    if cfg.duracao_minima > 0 and audio.segundos and audio.segundos < cfg.duracao_minima:
+        # Filtro de custo, nao de erro: fica silencioso mesmo com
+        # `resposta.avisar_erro` ligado. Avisar toda vez que alguem manda um
+        # "ok" de 2s so poluiria a conversa.
+        log.info(
+            "Audio de %ds em %s abaixo do piso de %ds; ignorado sem aviso",
+            audio.segundos, audio.remote_jid, cfg.duracao_minima,
+        )
+        srv.estado.concluir(audio.message_id, segundos=audio.segundos,
+                            status="ignorado", erro="duracao abaixo do piso")
+        return
+
     if audio.segundos and audio.segundos > cfg.duracao_maxima:
         log.info(
             "Audio de %ds em %s passa do teto de %ds",

@@ -202,6 +202,10 @@ real, se precisar, vem de trocar o provedor de transcrição, não o modelo.
   aceita pelo gateway.
 - **Áudio longo demais é recusado**, não picotado — o teto padrão é 15 minutos
   e 24 MB (`config/escriba.yaml`). O limite duro da API de transcrição é 25 MB.
+- **Áudio curto demais pode ser ignorado sem custo de API.**
+  `audio.duracao_minima_segundos` (padrão `0`, desligado) filtra em silêncio —
+  sem transcrever e sem avisar na conversa — o "ok", "blz" de poucos segundos.
+  É valor móvel: mude para 40, 120, o que fizer sentido, e reinicie o agente.
 - **Reentrega não gera transcrição dupla.** A Evolution reenvia o webhook
   quando não recebe 200 rápido; o Escriba reserva o id da mensagem antes da
   primeira chamada paga. Falha de rede libera a reserva (dá para tentar de
