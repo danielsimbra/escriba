@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+# Escriba — regras de operação. Este arquivo é montado como volume no Docker:
+# editar e reiniciar o container basta, não precisa rebuild da imagem.
+#
+# O que é segredo (chaves de API, URL da Evolution) mora no .env, não aqui.
+# ---------------------------------------------------------------------------
+
+allowlist:
+  # Trave de segurança principal. Com `permitir_todos: false` e a lista vazia,
+  # o Escriba não transcreve absolutamente nada — é o estado inicial seguro.
+  permitir_todos: false
+
+  # Conversas em que o Escriba pode agir. Aceita:
+  #   - número individual, em qualquer formatação: "5500900000001"
+  #   - JID de grupo, sempre completo:            "120363123456789012@g.us"
+  # Um número aqui autoriza a conversa; ele ainda precisa estar LIGADO
+  # (veja `comeca_ativo` e os comandos abaixo) para transcrever de fato.
+  conversas:
+    - "5500900000001"
+
+  # Estado de uma conversa autorizada que nunca recebeu "escriba on"/"off".
+  #   true  = já nasce transcrevendo
+  #   false = fica quieta até você mandar "escriba on" naquela conversa
+  comeca_ativo: true
+
+audio:
+  # Áudios que VOCÊ gravou (fromMe). O pedido original é transcrever o que
+  # chega dos outros; ligue se quiser transcrever os seus também.
+  processar_proprios: false
+
+  # Tetos de proteção. Áudio acima disso é ignorado com aviso no log — e,
+  # se `resposta.avisar_erro` estiver ligado, com um aviso na conversa.
+  # 900s = 15 min. O limite de tamanho da API de transcrição é 25 MB.
+  duracao_maxima_segundos: 900
+  tamanho_maximo_mb: 24
+
+comandos:
+  # Palavra que liga/desliga o Escriba dentro de uma conversa autorizada.
+  # Reconhece: "escriba on|ligar|ativar", "escriba off|desligar|parar",
+  # "escriba status", "escriba ajuda". Com ou sem "/" na frente.
+  prefixo: "escriba"
+
+  # true = só mensagens enviadas por você (fromMe) podem ligar/desligar.
+  # Deixe true: com false, qualquer pessoa do grupo desliga o seu agente.
+  apenas_proprio: true
+
+resposta:
+  # Cabeçalho da mensagem de resposta. Deixe "" para mandar só o texto puro.
+  prefixo: "*Transcrição*\n\n"
+
+  # true = a resposta cita o áudio original (fica visualmente amarrada a ele).
+  responder_citando: true
+
+  # true = manda "digitando..." enquanto transcreve. É só cosmético; a falha
+  # nesse envio nunca derruba a transcrição.
+  mostrar_digitando: true
+
+  # WhatsApp aceita mensagens longas, mas texto gigante em bloco único é
+  # ruim de ler no celular. Acima disso, a resposta é quebrada em partes.
+  max_caracteres_mensagem: 3500
+
+  # true = avisa na conversa quando a transcrição falha. Com false, o erro
+  # fica só no log e a conversa segue como se nada tivesse acontecido.
+  avisar_erro: true
+
+  # Texto enviado quando o áudio não tem fala inteligível (só ruído, música,
+  # microfone abafado). Deixe "" para não responder nada nesse caso.
+  sem_fala: "Não consegui identificar fala nesse áudio."
+
+limpeza:
+  # Muletas e hesitações citadas explicitamente para o modelo. A lista não é
+  # exaustiva — o modelo remove hesitação equivalente que não esteja aqui —
+  # mas ancora o comportamento no vício de linguagem que você mais quer fora.
+  muletas:
+    - "hmm"
+    - "ahn"
+    - "éééé"
+    - "ééé"
+    - "eh"
+    - "ah"
+    - "uhum"
+    - "né"
+    - "tipo"
+    - "tipo assim"
+    - "sabe"
+    - "assim"
+    - "meio que"
+    - "cara"
+    - "olha só"
+    - "então" # só quando é pausa, não quando encadeia ideia
+
+  # false = mantém o número como a pessoa falou ("dez mil reais").
+  # true  = converte para algarismo ("R$ 10.000", "14h30").
+  # Mexe na forma, não na palavra escolhida; por padrão fica desligado para
+  # a transcrição ser o mais fiel possível à fala.
+  numeros_em_algarismos: false
+
+  # Instrução extra colada no fim do prompt de limpeza. Use para vocabulário
+  # do seu contexto — nomes próprios, siglas, jargão — que a transcrição
+  # costuma errar. Ex.: 'Grafias corretas: "Databricks", "Simbra", "PySpark".'
+  instrucoes_extras: ""
+
+  # Transcrição maior que isso é limpa em pedaços, para não estourar o teto
+  # de tokens de saída do modelo. Em caracteres.
+  max_caracteres_por_lote: 9000

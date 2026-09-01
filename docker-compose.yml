@@ -1,0 +1,124 @@
+# ---------------------------------------------------------------------------
+# Escriba — pilha completa: o agente + o gateway de WhatsApp.
+#
+# JA TEM UMA EVOLUTION API RODANDO (a do Hugin, por exemplo)?
+# Entao comente os servicos `evolution-api`, `postgres` e `redis` daqui,
+# aponte EVOLUTION_BASE_URL para o gateway existente e ligue o Escriba na
+# rede dele (veja docs/DEPLOY.md, secao "Reaproveitando um gateway").
+# Duas Evolution na mesma maquina brigam pela porta 8080.
+# ---------------------------------------------------------------------------
+services:
+  escriba:
+    build: .
+    image: escriba:latest
+    container_name: escriba
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # So na loopback: quem precisa alcancar o Escriba e a Evolution, e ela
+      # fala com ele pela rede interna do compose. A porta publicada aqui
+      # serve para voce abrir http://127.0.0.1:8000/saude e conferir.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      evolution-api:
+        condition: service_healthy
+    volumes:
+      # Banco de estado (quem esta ligado, o que ja foi transcrito) e logs.
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Editar as regras nao exige rebuild da imagem.
+      - ./config/escriba.yaml:/app/config/escriba.yaml:ro
+    networks: [escriba-net]
+
+  # ---------------------------------------------------------------------
+  # Gateway de WhatsApp. Pareado por QR Code em http://SEU_IP:8080/manager
+  # ---------------------------------------------------------------------
+  evolution-api:
+    # evoapicloud/evolution-api e o repositorio ativo hoje; atendai/ ficou orfao.
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: escriba-evolution
+    restart: unless-stopped
+    ports:
+      # Em producao, prefira expor so na loopback (127.0.0.1:8080:8080)
+      # e publicar via Nginx com TLS e Basic Auth.
+      - "8080:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_TYPE: apikey
+      DEL_INSTANCE: "false"
+      LANGUAGE: pt-BR
+      # Persistencia das sessoes do WhatsApp.
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${POSTGRES_PASSWORD:-evolution}@postgres:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      # O webhook e registrado por instancia, com
+      # `python -m escriba configurar-webhook`. O global fica desligado para
+      # nao duplicar entrega.
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      # Manda o audio ja em base64 dentro do evento: economiza uma chamada
+      # de volta a Evolution para buscar a midia.
+      WEBHOOK_BASE64: "true"
+      QRCODE_LIMIT: "30"
+      LOG_LEVEL: ERROR
+      TZ: ${TZ:-America/Sao_Paulo}
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      # A imagem nao tem curl instalado; usa o Node ja presente para o check.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [escriba-net]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: escriba-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evolution}
+      POSTGRES_DB: evolution
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [escriba-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: escriba-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [escriba-net]
+
+volumes:
+  evolution_instances:
+  postgres_data:
+  redis_data:
+
+networks:
+  escriba-net:
+    driver: bridge
