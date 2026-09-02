@@ -5,7 +5,7 @@ webhook — se a Evolution mexer no envelope, um destes quebra.
 from __future__ import annotations
 
 from escriba.evolution import _acao_de_comando, interpretar, interpretar_lote
-from escriba.models import Audio, Comando
+from escriba.models import Audio, Comando, normalizar_destino
 
 JID = "5500900000001@s.whatsapp.net"
 
@@ -75,6 +75,25 @@ def test_base64_do_proprio_webhook_e_aproveitado():
     assert evento.base64 == "QUJD"
 
 
+def test_audio_aceita_file_length_long_do_baileys():
+    """Baileys as vezes serializa numero 64-bit como objeto Long, nao numero
+    puro. Sem tratar isso, `int(dict)` derruba a leitura do evento inteiro
+    com TypeError — foi o que quebrou na producao (Evolution v2.3.7)."""
+    payload = evento_audio(
+        message={
+            "audioMessage": {
+                "mimetype": "audio/ogg",
+                "seconds": {"low": 42, "high": 0, "unsigned": True},
+                "fileLength": {"low": 123456, "high": 0, "unsigned": True},
+            }
+        }
+    )
+    evento = interpretar(payload, "escriba")
+    assert isinstance(evento, Audio)
+    assert evento.segundos == 42
+    assert evento.tamanho_bytes == 123456
+
+
 def test_audio_em_grupo_guarda_o_participante():
     grupo = evento_audio(key={
         "remoteJid": "120363123456789012@g.us",
@@ -131,3 +150,19 @@ def test_texto_que_apenas_menciona_o_nome_nao_e_comando():
     """O prefixo tem que abrir a mensagem; citar o nome no meio nao conta."""
     assert _acao_de_comando("o escriba transcreveu certinho", "escriba") is None
     assert _acao_de_comando("bom dia", "escriba") is None
+
+
+# -- normalizacao de numero: Brasil vs NANP ---------------------------------
+def test_numero_norte_americano_nao_recebe_prefixo_brasileiro():
+    """Numero dos EUA/Canada ja vem com o codigo do pais (1); nao pode virar
+    '551...' — isso corrompe o numero e o envio falha."""
+    assert normalizar_destino("14155552671") == "14155552671"
+
+
+def test_numero_de_sao_paulo_sem_ddi_colide_com_a_heuristica_nanp():
+    """Limitacao conhecida, nao regressao: DDD 11-19 (Sao Paulo) tambem
+    comeca por '1', entao a mesma regra que protege numero NANP deixa um
+    contato paulista sem o prefixo '55' se ele for gravado sem DDI na
+    allowlist. Grave sempre com '55' na frente para numero brasileiro —
+    ver o comentario em models.normalizar_destino."""
+    assert normalizar_destino("11987654321") == "11987654321"
