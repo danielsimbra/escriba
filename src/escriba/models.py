@@ -118,7 +118,16 @@ def normalizar_destino(bruto: str) -> str:
     if not digitos:
         return ""
     if not digitos.startswith("55") and len(digitos) in (10, 11):
-        # So completa o codigo do pais em numero brasileiro sem DDI; numero
-        # estrangeiro na allowlist e deixado como esta.
-        digitos = "55" + digitos
+        # So completa o codigo do pais em numero brasileiro sem DDI. Numeros
+        # internacionais iniciados por 1 (NANP: EUA/Canada) sao deixados
+        # como recebidos.
+        #
+        # ATENCAO: essa checagem colide com DDD 11-19, que sao todos de Sao
+        # Paulo e tambem comecam por "1" (ex.: "11987654321", DDD 11). Um
+        # contato de SP sem o "55" na allowlist cai aqui e NAO recebe o
+        # prefixo — o numero final fica invalido. Prefira sempre gravar o
+        # numero com "55" na frente em config/escriba.yaml para contato
+        # brasileiro; essa heuristica e so uma rede de seguranca.
+        if not digitos.startswith("1"):
+            digitos = "55" + digitos
     return digitos

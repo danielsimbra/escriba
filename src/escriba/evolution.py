@@ -80,8 +80,8 @@ def interpretar(payload: dict[str, Any], prefixo_comando: str) -> Audio | Comand
             push_name=str(dados.get("pushName") or ""),
             participante=str(chave.get("participant") or dados.get("participant") or ""),
             mimetype=str(audio.get("mimetype") or "audio/ogg; codecs=opus"),
-            segundos=int(audio.get("seconds") or 0),
-            tamanho_bytes=int(audio.get("fileLength") or 0),
+            segundos=_inteiro_metadado(audio.get("seconds")),
+            tamanho_bytes=_inteiro_metadado(audio.get("fileLength")),
             ptt=bool(audio.get("ptt", True)),
             base64=str(dados.get("base64") or mensagem.get("base64") or ""),
             chave=chave,
@@ -111,6 +111,41 @@ def interpretar_lote(payload: dict[str, Any], prefixo_comando: str) -> list[Audi
         if evento:
             eventos.append(evento)
     return eventos
+
+
+def _inteiro_metadado(valor: Any) -> int:
+    """Converte metadado numerico da Evolution/Baileys em inteiro.
+
+    Baileys serializa numero 64-bit (protobuf Long) usando a lib `long`, que
+    vira no JSON um objeto `{"low": ..., "high": ..., "unsigned": true}` em
+    vez de um numero puro — e foi assim que um `fileLength` real quebrou o
+    `int()` direto com TypeError. `low`/`high` sao inteiros de 32 bits; o
+    valor completo e `low + high * 2**32`, mascarando os dois para unsigned
+    porque um Long negativo em JSON representa o complemento de dois do bit
+    mais alto ligado (ex.: low=-1 == 0xFFFFFFFF).
+    """
+    if valor is None or valor == "":
+        return 0
+
+    if isinstance(valor, dict):
+        if "value" in valor:
+            return _inteiro_metadado(valor["value"])
+        if "low" in valor or "high" in valor:
+            try:
+                low = int(valor.get("low") or 0) & 0xFFFFFFFF
+                high = int(valor.get("high") or 0) & 0xFFFFFFFF
+                return low + (high << 32)
+            except (TypeError, ValueError):
+                return 0
+        for chave in ("bytes", "size", "length"):
+            if chave in valor:
+                return _inteiro_metadado(valor[chave])
+        return 0
+
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return 0
 
 
 def extrair_texto(mensagem: dict[str, Any]) -> str:
