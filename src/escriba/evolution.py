@@ -62,6 +62,7 @@ def interpretar(payload: dict[str, Any], prefixo_comando: str) -> Audio | Comand
 
     chave = dados.get("key") or {}
     remote_jid = str(chave.get("remoteJid") or "")
+    remote_jid_alt = str(chave.get("remoteJidAlt") or dados.get("remoteJidAlt") or "")
     message_id = str(chave.get("id") or "")
     if not remote_jid or not message_id:
         return None
@@ -79,6 +80,10 @@ def interpretar(payload: dict[str, Any], prefixo_comando: str) -> Audio | Comand
             from_me=from_me,
             push_name=str(dados.get("pushName") or ""),
             participante=str(chave.get("participant") or dados.get("participant") or ""),
+            remote_jid_alt=remote_jid_alt,
+            participante_alt=str(
+                chave.get("participantAlt") or dados.get("participantAlt") or ""
+            ),
             mimetype=str(audio.get("mimetype") or "audio/ogg; codecs=opus"),
             segundos=_inteiro_metadado(audio.get("seconds")),
             tamanho_bytes=_inteiro_metadado(audio.get("fileLength")),
@@ -95,6 +100,7 @@ def interpretar(payload: dict[str, Any], prefixo_comando: str) -> Audio | Comand
             return Comando(
                 acao=acao, remote_jid=remote_jid, from_me=from_me,
                 message_id=message_id, texto=texto.strip(),
+                remote_jid_alt=remote_jid_alt,
             )
     return None
 

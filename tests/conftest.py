@@ -125,18 +125,23 @@ class LimpadorFalso:
         return self.texto
 
 
-@pytest.fixture
-def servicos(tmp_path):
-    """Servicos completo com dubles, pronto para `pipeline.processar`."""
-    cfg = fazer_settings(tmp_path)
+def fazer_servicos(tmp_path, *, limpador: Any = None, **ajustes: Any) -> Servicos:
+    """Servicos com dubles. `regras=` e `dry_run=` vao para `fazer_settings`."""
+    cfg = fazer_settings(tmp_path, **ajustes)
     return Servicos(
         cfg=cfg,
         evolution=EvolutionFalsa(),
         transcritor=TranscritorFalso(),
-        limpador=LimpadorFalso(),
+        limpador=limpador or LimpadorFalso(),
         estado=Estado(cfg.db_path),
         semaforo=threading.BoundedSemaphore(2),
     )
+
+
+@pytest.fixture
+def servicos(tmp_path):
+    """Servicos completo com dubles, pronto para `pipeline.processar`."""
+    return fazer_servicos(tmp_path)
 
 
 def fazer_audio(**ajustes: Any) -> Audio:

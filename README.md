@@ -20,8 +20,8 @@ Evolution API  ──webhook──▶  Escriba  ──▶  OpenAI (gpt-4o-transc
                             allowlist        transcrição bruta
                             liga/desliga            │
                                                     ▼
-        WhatsApp  ◀── resposta citando ◀── Claude (limpeza)
-                       o áudio original      texto legível
+     destino fixo  ◀──  texto limpo  ◀── Claude (limpeza)
+   (você, em privado)   com cabeçalho      texto legível
 ```
 
 1. **Recebe o evento** `messages.upsert` da Evolution API. Descarta na hora
@@ -34,8 +34,12 @@ Evolution API  ──webhook──▶  Escriba  ──▶  OpenAI (gpt-4o-transc
    inclusa.
 4. **Limpa** com a Claude. Saem as muletas, entra a pontuação. As palavras
    continuam sendo as do falante.
-5. **Responde na conversa**, citando o áudio original, para o texto ficar
-   visualmente amarrado a ele.
+5. **Entrega o texto.** Por padrão manda tudo para um **destino fixo**
+   (`resposta.destino`) — normalmente o próprio número pareado, de modo que as
+   transcrições caem na sua conversa "Mensagens para mim" e o contato do outro
+   lado não vê nada. Cada mensagem leva cabeçalho dizendo de quem é o áudio e
+   quanto durou. Deixando `destino` vazio, ele volta ao outro modo: responde
+   dentro da conversa de origem, citando o áudio.
 
 A Claude não entra na etapa 3 porque a API da Anthropic não recebe áudio. São
 dois modelos de ofício diferente: um que ouve e um que edita.
@@ -80,14 +84,32 @@ Tudo isso é ajustável em [`config/escriba.yaml`](config/escriba.yaml): a lista
 de muletas, se número vira algarismo, e um campo de instruções extras para
 vocabulário do seu contexto (nomes próprios e siglas que a transcrição erra).
 
+## Como os números se encaixam
+
+Três papéis, e confundi-los é a causa mais comum de "não funciona":
+
+| Papel | Quem é | Onde se configura |
+|---|---|---|
+| **Pareado** | O número que lê o QR Code. É a caixa de entrada: só chega ao Escriba o áudio enviado **para ele**. | Na Evolution, por QR Code — não é variável de ambiente |
+| **Destino** | Quem recebe as transcrições | `resposta.destino` |
+| **Remetentes** | De quem os áudios são transcritos | `allowlist.conversas` |
+
+Pareado e destino são **o mesmo número** na configuração padrão: o agente
+manda para si mesmo, e as transcrições aparecem em "Mensagens para mim". Os
+remetentes são os contatos, e o número pareado **não** entra na allowlist —
+áudio gravado por ele chega como `fromMe` e é filtrado.
+
+Se o número pareado não for o que recebe os áudios, nada acontece: o webhook
+nunca é acionado, porque a mensagem não passa por aquela sessão.
+
 ## Quem ele atende
 
 Duas travas, e as duas precisam estar abertas para um áudio virar texto.
 
 **1. A allowlist.** Só conversas em `allowlist.conversas` são atendidas. Fora
 delas o Escriba é surdo e mudo — não transcreve e não responde nem a comando.
-O estado inicial do arquivo é o seguro: lista com o seu número e
-`permitir_todos: false`.
+A rejeição é registrada em `INFO` com o JID cru junto: se um áudio "sumiu", o
+log diz por quê.
 
 **2. O liga/desliga por conversa.** Dentro de uma conversa autorizada:
 
@@ -211,6 +233,15 @@ real, se precisar, vem de trocar o provedor de transcrição, não o modelo.
   primeira chamada paga. Falha de rede libera a reserva (dá para tentar de
   novo); falha de formato não (repetir daria no mesmo).
 - **Áudio seu não é transcrito** por padrão. Ligue em `audio.processar_proprios`.
+- **LID: o `remoteJid` nem sempre é o telefone.** O WhatsApp migrou parte do
+  endereçamento para `@lid`, um identificador opaco; o telefone real vem em
+  `remoteJidAlt`. O Escriba usa o `Alt` para allowlist e estado, mas mantém a
+  chave **como veio** nas chamadas à Evolution — é por ela que a API acha a
+  mídia. Sem isso, todo áudio em LID era descartado por "não está na
+  allowlist".
+- **Payload ilegível responde 200, não 500.** Reentregar um payload quebrado
+  daria no mesmo resultado; o erro vai para o log com o traceback inteiro e a
+  Evolution não entra em laço de retentativa.
 
 ## Estrutura
 

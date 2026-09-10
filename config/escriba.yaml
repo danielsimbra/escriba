@@ -10,13 +10,21 @@ allowlist:
   # o Escriba não transcreve absolutamente nada — é o estado inicial seguro.
   permitir_todos: false
 
-  # Conversas em que o Escriba pode agir. Aceita:
-  #   - número individual, em qualquer formatação: "5500900000001"
+  # Conversas em que o Escriba pode agir — ou seja, de QUEM ele transcreve os
+  # áudios recebidos. Aceita:
+  #   - número individual, em qualquer formatação: "5500900000002"
   #   - JID de grupo, sempre completo:            "120363123456789012@g.us"
   # Um número aqui autoriza a conversa; ele ainda precisa estar LIGADO
   # (veja `comeca_ativo` e os comandos abaixo) para transcrever de fato.
+  #
+  # NÃO coloque aqui o número pareado na Evolution (o mesmo de
+  # `resposta.destino`): ele é quem RECEBE as transcrições. Áudio gravado por
+  # ele chega como `fromMe` e é filtrado por `audio.processar_proprios`.
+  #
+  # Sempre com o "55" na frente para número brasileiro — ver o comentário em
+  # models.normalizar_destino sobre a colisão de DDD 11-19 com números NANP.
   conversas:
-    - "5500900000001"
+    - "5500900000002"
 
   # Estado de uma conversa autorizada que nunca recebeu "escriba on"/"off".
   #   true  = já nasce transcrevendo
@@ -51,15 +59,32 @@ comandos:
   apenas_proprio: true
 
 resposta:
+  # Para ONDE vai toda transcrição.
+  #
+  # Preenchido = modo destino fixo: tudo cai nesta conversa, e o contato que
+  # mandou o áudio não vê nada — nem transcrição, nem "digitando", nem aviso
+  # de erro. Como a resposta sai de outra conversa, ela não consegue citar o
+  # áudio original; em troca vai com cabeçalho dizendo de quem é.
+  #
+  # É o mesmo número pareado na Evolution por QR Code: o agente manda para si
+  # mesmo, e as transcrições aparecem na sua conversa "Mensagens para mim".
+  #
+  # Vazio ("") = responde dentro da conversa de origem, citando o áudio — aí
+  # o contato do outro lado enxerga a transcrição.
+  destino: "5500900000001"
+
   # Cabeçalho da mensagem de resposta. Deixe "" para mandar só o texto puro.
   prefixo: "*Transcrição*\n\n"
 
   # true = a resposta cita o áudio original (fica visualmente amarrada a ele).
+  # Ignorado quando `destino` está preenchido — não dá para citar mensagem
+  # que está em outra conversa.
   responder_citando: true
 
   # true = manda "digitando..." enquanto transcreve. É só cosmético; a falha
-  # nesse envio nunca derruba a transcrição.
-  mostrar_digitando: true
+  # nesse envio nunca derruba a transcrição. Ignorado com `destino` fixo:
+  # o "digitando" apareceria na conversa do contato e entregaria o agente.
+  mostrar_digitando: false
 
   # WhatsApp aceita mensagens longas, mas texto gigante em bloco único é
   # ruim de ler no celular. Acima disso, a resposta é quebrada em partes.
