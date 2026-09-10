@@ -18,10 +18,16 @@ class Audio:
     """Um audio recebido no WhatsApp, ja identificado no payload do webhook."""
 
     message_id: str
-    remote_jid: str            # conversa de origem (contato ou grupo)
+    remote_jid: str            # conversa de origem, COMO VEIO (pode ser @lid)
     from_me: bool
     push_name: str = ""
     participante: str = ""     # em grupo, quem falou; em conversa individual, vazio
+    # O WhatsApp migrou parte do enderecamento para LID: `remoteJid` chega como
+    # "<numero opaco>@lid", que NAO e o telefone, e o telefone real vem no
+    # `remoteJidAlt` (o mesmo vale para `participantAlt` em grupo). Guardamos
+    # os dois: o cru serve para falar com a Evolution, o alt para identificar.
+    remote_jid_alt: str = ""
+    participante_alt: str = ""
     mimetype: str = "audio/ogg; codecs=opus"
     segundos: int = 0
     tamanho_bytes: int = 0
@@ -35,9 +41,21 @@ class Audio:
         return self.remote_jid.endswith(SUFIXO_GRUPO)
 
     @property
+    def conversa(self) -> str:
+        """A conversa em telefone, para allowlist e estado.
+
+        Nunca use `remote_jid` cru para decidir politica: em LID ele e um
+        numero opaco que jamais casa com a allowlist, e o audio some sem
+        motivo aparente. Para grupo o proprio `remote_jid` ja e a identidade.
+        """
+        if self.e_grupo:
+            return self.remote_jid
+        return self.remote_jid_alt or self.remote_jid
+
+    @property
     def autor(self) -> str:
         """Quem gravou o audio. Em grupo e o participante, nao a conversa."""
-        return self.participante or self.remote_jid
+        return self.participante_alt or self.participante or self.conversa
 
     @property
     def extensao(self) -> str:
@@ -55,10 +73,18 @@ class Comando:
     """Um comando de controle digitado numa conversa ("escriba on")."""
 
     acao: str                  # "ligar" | "desligar" | "status" | "ajuda"
-    remote_jid: str
+    remote_jid: str            # como veio, pode ser @lid
     from_me: bool
     message_id: str = ""
     texto: str = ""
+    remote_jid_alt: str = ""
+
+    @property
+    def conversa(self) -> str:
+        """Mesma regra do Audio: telefone quando o JID cru vier em LID."""
+        if self.remote_jid.endswith(SUFIXO_GRUPO):
+            return self.remote_jid
+        return self.remote_jid_alt or self.remote_jid
 
 
 @dataclass(frozen=True)

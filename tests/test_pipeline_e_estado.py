@@ -226,3 +226,117 @@ def test_grupo_precisa_estar_na_lista(tmp_path):
 def test_permitir_todos_abre_para_qualquer_conversa(tmp_path):
     cfg = fazer_settings(tmp_path, regras={"allowlist": {"permitir_todos": True}})
     assert cfg.autorizada("5500900000005@s.whatsapp.net")
+
+
+# -- LID: quando o remoteJid nao e o telefone -------------------------------
+def test_audio_em_lid_e_reconhecido_pelo_remote_jid_alt(tmp_path):
+    """O caso que fazia audio sumir sem uma linha de log: em LID o
+    `remoteJid` e um numero opaco que nunca casa com a allowlist."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path)
+    pipeline.processar(srv, fazer_audio(
+        remote_jid="133430797286155@lid",
+        remote_jid_alt="5500900000001@s.whatsapp.net",
+    ))
+    assert len(srv.evolution.enviadas) == 1
+
+
+def test_lid_sem_alt_continua_sendo_recusado(tmp_path):
+    """Sem o `remoteJidAlt` nao da para saber o telefone; recusar e o certo."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path)
+    pipeline.processar(srv, fazer_audio(remote_jid="133430797286155@lid"))
+    assert srv.evolution.enviadas == []
+
+
+def test_chave_original_e_preservada_para_baixar_a_midia(tmp_path):
+    """A Evolution acha a midia pela key COMO ELA VEIO. Normalizar o JID para
+    a allowlist nao pode reescrever a chave, ou o download quebra."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path)
+    chave_crua = {"id": "MSG1", "remoteJid": "133430797286155@lid", "fromMe": False}
+    audio = fazer_audio(
+        remote_jid="133430797286155@lid",
+        remote_jid_alt="5500900000001@s.whatsapp.net",
+        chave=chave_crua,
+    )
+    pipeline.processar(srv, audio)
+    assert audio.chave == chave_crua
+    assert audio.chave["remoteJid"] == "133430797286155@lid"
+
+
+# -- destino fixo -----------------------------------------------------------
+def test_destino_fixo_recebe_a_transcricao_sem_citar(tmp_path):
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path, regras={
+        "resposta": {"destino": "5500900000001"},
+        "allowlist": {"conversas": ["5500900000002"]},
+    })
+    pipeline.processar(srv, fazer_audio(remote_jid="5500900000002@s.whatsapp.net"))
+
+    assert len(srv.evolution.enviadas) == 1
+    destino, texto, citou = srv.evolution.enviadas[0]
+    assert destino == "5500900000001"
+    assert citou is False
+    # Sem citacao, o cabecalho e a unica pista de quem falou.
+    assert "Fulano" in texto
+    assert "Bom dia, tudo bem?" in texto
+
+
+def test_cabecalho_traz_a_duracao_do_audio(tmp_path):
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path, regras={
+        "resposta": {"destino": "5500900000001"},
+        "allowlist": {"conversas": ["5500900000002"]},
+    })
+    pipeline.processar(srv, fazer_audio(
+        remote_jid="5500900000002@s.whatsapp.net", segundos=95,
+    ))
+    assert "1m35s" in srv.evolution.enviadas[0][1]
+
+
+def test_com_destino_fixo_o_contato_nao_recebe_aviso_de_erro(tmp_path):
+    """Contato que nao sabe do agente nao pode receber 'nao consegui
+    transcrever' — o aviso vai junto com o resto, para o destino fixo."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path, regras={
+        "resposta": {"destino": "5500900000001"},
+        "allowlist": {"conversas": ["5500900000002"]},
+    })
+    srv.transcritor.erro = TranscricaoError("formato invalido")
+    pipeline.processar(srv, fazer_audio(remote_jid="5500900000002@s.whatsapp.net"))
+
+    assert len(srv.evolution.enviadas) == 1
+    assert srv.evolution.enviadas[0][0] == "5500900000001"
+
+
+def test_com_destino_fixo_nao_mostra_digitando_na_origem(tmp_path):
+    """'Digitando' na conversa do contato entregaria que existe um agente."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path, regras={
+        "resposta": {"destino": "5500900000001", "mostrar_digitando": True},
+        "allowlist": {"conversas": ["5500900000002"]},
+    })
+    pipeline.processar(srv, fazer_audio(remote_jid="5500900000002@s.whatsapp.net"))
+    assert srv.evolution.presencas == []
+
+
+def test_destino_vazio_mantem_resposta_na_conversa_de_origem(tmp_path):
+    """Comportamento original continua disponivel: destino vazio = responde
+    na conversa, citando o audio."""
+    from conftest import fazer_servicos
+
+    srv = fazer_servicos(tmp_path, regras={"resposta": {"destino": ""}})
+    pipeline.processar(srv, fazer_audio())
+
+    destino, texto, citou = srv.evolution.enviadas[0]
+    assert destino == "5500900000001@s.whatsapp.net"
+    assert citou is True
+    assert "Fulano" not in texto  # sem cabecalho: a conversa ja diz quem e

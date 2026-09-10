@@ -81,3 +81,16 @@ def test_corpo_invalido_responde_400(cliente):
         headers={"Content-Type": "application/json"},
     )
     assert resposta.status_code == 400
+
+
+def test_payload_ilegivel_responde_200_e_nao_derruba_o_handler(cliente, servicos):
+    """A leitura roda sincrona no handler. Se ela explodir, vira 500 e a
+    Evolution reentrega o mesmo payload quebrado em loop — foi o que
+    aconteceu com `fileLength` em formato Long."""
+    payload = evento_audio()
+    payload["data"]["key"] = "isto devia ser um objeto, nao uma string"
+
+    resposta = cliente.post("/webhook?token=segredo", json=payload)
+    assert resposta.status_code == 200
+    assert resposta.json()["ok"] is False
+    assert servicos.evolution.enviadas == []

@@ -166,3 +166,50 @@ def test_numero_de_sao_paulo_sem_ddi_colide_com_a_heuristica_nanp():
     allowlist. Grave sempre com '55' na frente para numero brasileiro —
     ver o comentario em models.normalizar_destino."""
     assert normalizar_destino("11987654321") == "11987654321"
+
+
+# -- LID: remoteJid deixa de ser o telefone ---------------------------------
+def test_remote_jid_alt_identifica_a_conversa_em_lid():
+    """Em LID o `remoteJid` e um numero opaco. O telefone real vem no
+    `remoteJidAlt`, e e ele que tem de valer para allowlist e estado."""
+    payload = evento_audio(key={
+        "remoteJid": "133430797286155@lid",
+        "remoteJidAlt": "5500900000002@s.whatsapp.net",
+        "fromMe": False,
+        "id": "3EB9",
+    })
+    evento = interpretar(payload, "escriba")
+    assert evento.remote_jid == "133430797286155@lid"      # cru, para a API
+    assert evento.conversa == "5500900000002@s.whatsapp.net"  # telefone
+
+
+def test_sem_lid_a_conversa_e_o_proprio_remote_jid():
+    evento = interpretar(evento_audio(), "escriba")
+    assert evento.conversa == JID
+
+
+def test_participante_alt_identifica_quem_falou_no_grupo():
+    payload = evento_audio(key={
+        "remoteJid": "120363123456789012@g.us",
+        "fromMe": False,
+        "id": "3EBA",
+        "participant": "99887766554433@lid",
+        "participantAlt": "5500900000002@s.whatsapp.net",
+    })
+    evento = interpretar(payload, "escriba")
+    assert evento.e_grupo
+    assert evento.conversa == "120363123456789012@g.us"   # grupo nao muda
+    assert evento.autor == "5500900000002@s.whatsapp.net"
+
+
+def test_comando_em_lid_tambem_resolve_a_conversa():
+    payload = evento_texto("escriba on")
+    payload["data"]["key"] = {
+        "remoteJid": "133430797286155@lid",
+        "remoteJidAlt": "5500900000002@s.whatsapp.net",
+        "fromMe": True,
+        "id": "3EBB",
+    }
+    evento = interpretar(payload, "escriba")
+    assert isinstance(evento, Comando)
+    assert evento.conversa == "5500900000002@s.whatsapp.net"

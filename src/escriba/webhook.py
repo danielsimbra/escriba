@@ -88,7 +88,21 @@ def criar_app(srv: Servicos) -> FastAPI:
             )
             return {"ok": True, "ignorado": "outra instancia"}
 
-        eventos = interpretar_lote(payload, srv.cfg.prefixo_comando)
+        # A leitura do payload roda aqui, sincrona, e nao na tarefa de fundo.
+        # Sem esta protecao, um campo em formato inesperado (foi o caso do
+        # `fileLength` como Long do protobuf) virava 500 — e a Evolution
+        # reentregava o mesmo evento em loop, sem nada ser processado.
+        try:
+            eventos = interpretar_lote(payload, srv.cfg.prefixo_comando)
+        except Exception:  # noqa: BLE001 - fronteira: payload e dado externo
+            log.exception(
+                "Payload de %s nao pode ser lido; evento descartado",
+                instancia or "instancia desconhecida",
+            )
+            # 200 de proposito: reentregar o mesmo payload quebrado nao muda
+            # o resultado, so multiplica o erro.
+            return {"ok": False, "erro": "payload ilegivel"}
+
         for item in eventos:
             tarefas.add_task(pipeline.processar, srv, item)
         return {"ok": True, "eventos": len(eventos)}

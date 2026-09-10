@@ -161,6 +161,18 @@ class Settings:
         return str(self._resposta.get("prefixo", ""))
 
     @property
+    def destino_resposta(self) -> str:
+        """Numero fixo que recebe TODA transcricao. Vazio = responde na origem.
+
+        Com destino fixo o contato do outro lado nunca ve a transcricao (nem
+        o "digitando", nem aviso de erro): tudo vai para uma conversa so.
+        Em troca, a resposta perde a citacao do audio — nao da para citar
+        mensagem de outra conversa —, e por isso ela leva cabecalho dizendo
+        de quem e o audio.
+        """
+        return normalizar_destino(str(self._resposta.get("destino", "") or ""))
+
+    @property
     def responder_citando(self) -> bool:
         return bool(self._resposta.get("responder_citando", True))
 

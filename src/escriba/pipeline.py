@@ -83,31 +83,39 @@ def processar(srv: Servicos, evento: Audio | Comando) -> None:
 # ---------------------------------------------------------------------------
 def _processar_comando(srv: Servicos, comando: Comando) -> None:
     cfg = srv.cfg
-    if not cfg.autorizada(comando.remote_jid):
-        # Conversa fora da allowlist nem sabe que o Escriba existe.
-        log.debug("Comando ignorado: %s nao esta na allowlist", comando.remote_jid)
+    conversa = comando.conversa
+    if not cfg.autorizada(conversa):
+        # Conversa fora da allowlist nem sabe que o Escriba existe. Fica em
+        # INFO, e nao DEBUG: e a rejeicao mais comum, e ficar muda faz parecer
+        # que o webhook nunca recebeu nada.
+        log.info(
+            "Comando ignorado: %s nao esta na allowlist (jid cru: %s)",
+            conversa, comando.remote_jid,
+        )
         return
     if cfg.comandos_apenas_proprio and not comando.from_me:
         log.info(
             "Comando '%s' de %s ignorado: so o dono pode ligar/desligar",
-            comando.acao, comando.remote_jid,
+            comando.acao, conversa,
         )
         return
 
     if comando.acao == "ligar":
-        srv.estado.definir_ativo(comando.remote_jid, True)
+        srv.estado.definir_ativo(conversa, True)
         resposta = "Escriba ligado nesta conversa. Os audios que chegarem aqui viram texto."
     elif comando.acao == "desligar":
-        srv.estado.definir_ativo(comando.remote_jid, False)
+        srv.estado.definir_ativo(conversa, False)
         resposta = (
             f"Escriba desligado nesta conversa. "
             f"Mande `{cfg.prefixo_comando} on` para voltar."
         )
     elif comando.acao == "status":
-        resposta = _texto_status(srv, comando.remote_jid)
+        resposta = _texto_status(srv, conversa)
     else:
         resposta = AJUDA.format(p=cfg.prefixo_comando)
 
+    # Comando e respondido sempre na conversa onde foi digitado, mesmo com
+    # destino fixo: quem mandou o comando espera a confirmacao ali.
     _responder(srv, comando.remote_jid, resposta)
 
 
@@ -133,19 +141,32 @@ def _texto_status(srv: Servicos, remote_jid: str) -> str:
 def _processar_audio(srv: Servicos, audio: Audio) -> None:
     cfg = srv.cfg
 
-    if not cfg.autorizada(audio.remote_jid):
-        log.debug("Audio ignorado: %s nao esta na allowlist", audio.remote_jid)
+    conversa = audio.conversa
+
+    # As duas rejeicoes abaixo ficam em INFO de proposito. Sao as mais comuns
+    # e, quando eram DEBUG, um audio descartado nao imprimia UMA linha: do
+    # lado de fora era identico a "o webhook nunca recebeu". O jid cru vai
+    # junto porque em LID ele e diferente do telefone, e a diferenca entre os
+    # dois e exatamente o que explica a rejeicao.
+    if not cfg.autorizada(conversa):
+        log.info(
+            "Audio ignorado: %s nao esta na allowlist (jid cru: %s, de: %s)",
+            conversa, audio.remote_jid, audio.push_name or "?",
+        )
         return
     if audio.from_me and not cfg.processar_proprios:
-        log.debug("Audio ignorado: gravado por mim e processar_proprios=false")
+        log.info(
+            "Audio ignorado: gravado por mim em %s e processar_proprios=false",
+            conversa,
+        )
         return
-    if not srv.estado.ativo(audio.remote_jid, cfg.comeca_ativo):
-        log.info("Audio ignorado: Escriba desligado em %s", audio.remote_jid)
+    if not srv.estado.ativo(conversa, cfg.comeca_ativo):
+        log.info("Audio ignorado: Escriba desligado em %s", conversa)
         return
 
     # A reserva vem antes ate das checagens de limite: se a Evolution
     # reentregar o evento, a pessoa nao recebe o mesmo aviso duas vezes.
-    if not srv.estado.reservar(audio.message_id, audio.remote_jid):
+    if not srv.estado.reservar(audio.message_id, conversa):
         log.info("Audio %s ja foi processado antes; ignorando reentrega", audio.message_id)
         return
 
@@ -155,7 +176,7 @@ def _processar_audio(srv: Servicos, audio: Audio) -> None:
         # "ok" de 2s so poluiria a conversa.
         log.info(
             "Audio de %ds em %s abaixo do piso de %ds; ignorado sem aviso",
-            audio.segundos, audio.remote_jid, cfg.duracao_minima,
+            audio.segundos, conversa, cfg.duracao_minima,
         )
         srv.estado.concluir(audio.message_id, segundos=audio.segundos,
                             status="ignorado", erro="duracao abaixo do piso")
@@ -164,7 +185,7 @@ def _processar_audio(srv: Servicos, audio: Audio) -> None:
     if audio.segundos and audio.segundos > cfg.duracao_maxima:
         log.info(
             "Audio de %ds em %s passa do teto de %ds",
-            audio.segundos, audio.remote_jid, cfg.duracao_maxima,
+            audio.segundos, conversa, cfg.duracao_maxima,
         )
         srv.estado.concluir(audio.message_id, segundos=audio.segundos,
                             status="recusado", erro="duracao acima do teto")
@@ -176,7 +197,7 @@ def _processar_audio(srv: Servicos, audio: Audio) -> None:
     if audio.tamanho_bytes and audio.tamanho_bytes > cfg.tamanho_maximo_bytes:
         log.info(
             "Audio de %.1f MB em %s passa do teto configurado",
-            audio.tamanho_bytes / 1024 / 1024, audio.remote_jid,
+            audio.tamanho_bytes / 1024 / 1024, conversa,
         )
         srv.estado.concluir(audio.message_id, segundos=audio.segundos,
                             status="recusado", erro="tamanho acima do teto")
@@ -192,10 +213,13 @@ def _transcrever_e_responder(srv: Servicos, audio: Audio) -> None:
     quem = audio.push_name or audio.autor
     log.info(
         "Transcrevendo audio de %s em %s (%ds)",
-        quem, audio.remote_jid, audio.segundos,
+        quem, audio.conversa, audio.segundos,
     )
 
-    if cfg.mostrar_digitando and not cfg.dry_run:
+    # Com destino fixo o "digitando" apareceria na conversa do contato, e
+    # entregaria que existe um agente lendo os audios dele. So mostra quando
+    # a resposta realmente vai sair naquela conversa.
+    if cfg.mostrar_digitando and not cfg.dry_run and not cfg.destino_resposta:
         srv.evolution.digitando(audio.remote_jid, segundos=5)
 
     try:
@@ -239,34 +263,83 @@ def _transcrever_e_responder(srv: Servicos, audio: Audio) -> None:
 
 def _enviar_transcricao(srv: Servicos, audio: Audio, texto: str) -> None:
     cfg = srv.cfg
-    partes = partir(cfg.prefixo_resposta + texto, cfg.max_caracteres_mensagem)
+    destino = cfg.destino_resposta
+    partes = partir(
+        cfg.prefixo_resposta + _cabecalho(cfg, audio) + texto,
+        cfg.max_caracteres_mensagem,
+    )
 
     if cfg.dry_run:
         log.info(
-            "[DRY_RUN] Transcricao de %s NAO enviada (%d parte(s)):\n%s",
-            audio.remote_jid, len(partes), texto,
+            "[DRY_RUN] Transcricao de %s NAO enviada para %s (%d parte(s)):\n%s",
+            audio.conversa, destino or "conversa de origem", len(partes), texto,
         )
         return
 
     for indice, parte in enumerate(partes, start=1):
         corpo = parte if len(partes) == 1 else f"*(parte {indice}/{len(partes)})*\n\n{parte}"
-        # So a primeira parte cita o audio; citar todas polui a conversa.
-        srv.evolution.responder(
-            audio, corpo, citar=cfg.responder_citando and indice == 1,
-        )
+        # Citar so faz sentido respondendo na propria conversa: a Evolution
+        # nao consegue citar mensagem que esta em outro chat.
+        if destino:
+            srv.evolution.responder(destino, corpo, citar=False)
+        else:
+            srv.evolution.responder(
+                audio, corpo, citar=cfg.responder_citando and indice == 1,
+            )
+
+
+def _cabecalho(cfg, audio: Audio) -> str:
+    """Diz de quem e o audio. So aparece quando ha destino fixo.
+
+    Sem isso, todas as transcricoes caem numa conversa so, sem citacao e sem
+    nome: um monte de texto solto sem dono. Respondendo na origem o cabecalho
+    seria redundante — a conversa ja diz quem falou.
+    """
+    if not cfg.destino_resposta:
+        return ""
+    quem = audio.push_name or _so_digitos(audio.autor)
+    partes = [f"*{quem}*"]
+    if audio.e_grupo:
+        partes.append("em grupo")
+    if audio.segundos:
+        partes.append(_duracao(audio.segundos))
+    return " · ".join(partes) + "\n\n"
+
+
+def _duracao(segundos: int) -> str:
+    minutos, resto = divmod(int(segundos), 60)
+    return f"{minutos}m{resto:02d}s" if minutos else f"{resto}s"
+
+
+def _so_digitos(jid: str) -> str:
+    return jid.split("@", 1)[0].split(":", 1)[0]
 
 
 def _avisar(srv: Servicos, audio: Audio, texto: str, *, sempre: bool = False) -> None:
-    """Aviso curto na conversa. Silencioso quando `resposta.avisar_erro` e false."""
+    """Aviso curto. Silencioso quando `resposta.avisar_erro` e false.
+
+    Segue o mesmo caminho da transcricao: com destino fixo, o contato nao
+    recebe aviso de erro nenhum — se ele nao sabe que existe um agente, uma
+    mensagem de "nao consegui transcrever" seria confusa do lado dele.
+    """
     if not sempre and not srv.cfg.avisar_erro:
         return
+    destino = srv.cfg.destino_resposta
     if srv.cfg.dry_run:
-        log.info("[DRY_RUN] Aviso NAO enviado para %s: %s", audio.remote_jid, texto)
+        log.info(
+            "[DRY_RUN] Aviso NAO enviado para %s: %s",
+            destino or audio.conversa, texto,
+        )
         return
     try:
-        srv.evolution.responder(audio, texto, citar=srv.cfg.responder_citando)
+        if destino:
+            srv.evolution.responder(
+                destino, _cabecalho(srv.cfg, audio) + texto, citar=False,
+            )
+        else:
+            srv.evolution.responder(audio, texto, citar=srv.cfg.responder_citando)
     except Exception as exc:  # noqa: BLE001 - aviso nao pode derrubar o fluxo
-        log.warning("Nao foi possivel avisar %s: %s", audio.remote_jid, exc)
+        log.warning("Nao foi possivel avisar %s: %s", destino or audio.conversa, exc)
 
 
 def _responder(srv: Servicos, remote_jid: str, texto: str) -> None:
