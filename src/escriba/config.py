@@ -219,8 +219,25 @@ def carregar_regras(caminho: Path) -> dict[str, Any]:
         return yaml.safe_load(fh) or {}
 
 
+def resolver_regras_path(base: Path = BASE_DIR) -> Path:
+    """Escolhe o arquivo de regras.
+
+    Ordem: REGRAS_PATH explicito > config/escriba.local.yaml > config/escriba.yaml.
+
+    O `escriba.yaml` versionado e so um template, com numeros ficticios. A
+    config de verdade (allowlist com telefone de gente, destino das
+    transcricoes) mora em `escriba.local.yaml`, que o .gitignore nao deixa
+    subir para o repositorio.
+    """
+    explicito = os.getenv("REGRAS_PATH", "").strip()
+    if explicito:
+        return Path(explicito)
+    local = base / "config" / "escriba.local.yaml"
+    return local if local.exists() else base / "config" / "escriba.yaml"
+
+
 def load_settings() -> Settings:
-    regras_path = Path(_env("REGRAS_PATH", str(BASE_DIR / "config" / "escriba.yaml")))
+    regras_path = resolver_regras_path()
     regras = carregar_regras(regras_path)
 
     return Settings(

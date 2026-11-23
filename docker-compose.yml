@@ -26,8 +26,10 @@ services:
       # Banco de estado (quem esta ligado, o que ja foi transcrito) e logs.
       - ./data:/app/data
       - ./logs:/app/logs
-      # Editar as regras nao exige rebuild da imagem.
-      - ./config/escriba.yaml:/app/config/escriba.yaml:ro
+      # Editar as regras nao exige rebuild da imagem. Monta a PASTA, nao um
+      # arquivo: assim o config/escriba.local.yaml (ignorado pelo Git) chega
+      # ao container, e a ausencia dele nao faz o Docker criar um diretorio.
+      - ./config:/app/config:ro
     networks: [escriba-net]
 
   # ---------------------------------------------------------------------

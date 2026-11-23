@@ -67,14 +67,26 @@ Deve dizer *"Instancia conectada"* e imprimir o webhook registrado.
 
 ### Autorizar a conversa
 
-Edite `config/escriba.yaml`, coloque o número (ou o ID do grupo) em
-`allowlist.conversas` e reinicie só o agente:
+O `config/escriba.yaml` do repositório é só um **template**, com números
+fictícios. Faça a sua cópia — ela está no `.gitignore` e nunca sobe para o Git:
+
+```bash
+cp config/escriba.yaml config/escriba.local.yaml
+```
+
+Edite o `escriba.local.yaml`: o número (ou o ID do grupo) de quem manda áudio em
+`allowlist.conversas`, e o seu número em `resposta.destino`. Depois reinicie só
+o agente:
 
 ```bash
 docker compose restart escriba
 ```
 
-O arquivo é montado como volume: não precisa rebuild da imagem.
+A pasta `config/` é montada como volume: não precisa rebuild da imagem. Na
+subida o log diz qual arquivo valeu (`Regras carregadas de ...`); se aparecer
+`escriba.yaml` em vez de `escriba.local.yaml`, o Escriba está lendo o template
+e vai ignorar todo áudio. A causa usual é um `REGRAS_PATH` no `.env`, que vence
+qualquer outra regra de escolha — apague essa linha.
 
 ### Firewall
 
@@ -221,7 +233,40 @@ aumente `ANTHROPIC_MAX_TOKENS`.
 
 ---
 
-## 4. Manutenção
+## 4. Migrando uma VPS que já rodava antes da config local
+
+Se a VPS foi instalada com o `config/escriba.yaml` editado no lugar (números
+reais dentro do arquivo versionado), o histórico do repositório foi reescrito e
+um `git pull` comum não funciona. Salve o que é seu **antes** de trazer o novo:
+
+```bash
+cp config/escriba.yaml config/escriba.local.yaml
+cp docker-compose.vps.yml /tmp/docker-compose.vps.yml.bak
+git status --short
+```
+
+Leia o `git status`: qualquer arquivo de código modificado (`src/`, `tests/`)
+são edições locais que o `reset` abaixo descarta. Compare com `git diff` antes
+se não tiver certeza de que o repositório já contém a correção.
+
+```bash
+git fetch origin
+git reset --hard origin/main
+```
+
+O `reset --hard` não toca em arquivos que o Git não rastreia, então o
+`escriba.local.yaml` e o `.env` sobrevivem. Depois:
+
+- tire o `REGRAS_PATH` do `.env`, se existir;
+- no `docker-compose.vps.yml`, troque a montagem
+  `./config/escriba.yaml:/app/config/escriba.yaml:ro` por
+  `./config:/app/config:ro`;
+- `docker compose up -d --build escriba` e confira no log a linha
+  `Regras carregadas de /app/config/escriba.local.yaml`.
+
+---
+
+## 5. Manutenção
 
 **Backup.** Dois lugares importam: `data/escriba.db` (quem está ligado e o
 histórico) e o volume `evolution_instances` (a sessão do WhatsApp — perdê-la

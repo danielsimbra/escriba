@@ -1,4 +1,6 @@
 .env
+# Config real (telefones de contatos, destino das transcricoes): so na maquina.
+config/*.local.yaml
 *.env
 !.env.example
 __pycache__/
