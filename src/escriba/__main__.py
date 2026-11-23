@@ -85,6 +85,7 @@ def _servir(cfg: Settings) -> int:
         "Transcricao: %s | Limpeza: %s | dry_run=%s",
         cfg.transcricao.model, cfg.claude.model, cfg.dry_run,
     )
+    log.info("Regras carregadas de %s", cfg.regras_path)
     if cfg.permitir_todos:
         log.warning(
             "allowlist.permitir_todos=true: o Escriba vai atender QUALQUER conversa."

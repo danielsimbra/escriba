@@ -160,8 +160,15 @@ Registre o Escriba como webhook da instância:
 docker compose exec escriba python -m escriba configurar-webhook
 ```
 
-Coloque o número (ou o ID do grupo) em `allowlist.conversas`, dentro de
-[`config/escriba.yaml`](config/escriba.yaml), e reinicie:
+Crie a sua config a partir do template — o `config/escriba.local.yaml` fica
+fora do Git, então telefone de contato seu nunca vai parar no GitHub:
+
+```bash
+cp config/escriba.yaml config/escriba.local.yaml
+```
+
+Nele, coloque em `allowlist.conversas` o número (ou o ID do grupo) de quem manda
+áudio, e em `resposta.destino` o seu. Reinicie:
 
 ```bash
 docker compose restart escriba
@@ -253,9 +260,9 @@ src/escriba/
   limpeza.py      texto bruto -> texto limpo (Claude); é onde moram as regras
   pipeline.py     a ordem das decisões: autorizada? ligada? cabe? transcreve
   estado.py       SQLite: quem está ligado e o que já foi processado
-  config.py       .env + config/escriba.yaml
+  config.py       .env + config/escriba.local.yaml (ou o template)
   models.py       Audio, Comando, Transcricao
-config/escriba.yaml   allowlist, limites, muletas, formato da resposta
+config/escriba.yaml   template: allowlist, limites, muletas, formato da resposta
 ```
 
 ```bash

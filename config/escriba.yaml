@@ -1,6 +1,16 @@
 # ---------------------------------------------------------------------------
-# Escriba — regras de operação. Este arquivo é montado como volume no Docker:
-# editar e reiniciar o container basta, não precisa rebuild da imagem.
+# Escriba — regras de operação. TEMPLATE versionado: os números abaixo são
+# fictícios (DDD 00 não existe) e servem só de exemplo.
+#
+# Sua config de verdade, com telefones reais, vai em config/escriba.local.yaml:
+#
+#     cp config/escriba.yaml config/escriba.local.yaml
+#
+# Esse arquivo está no .gitignore e o Escriba o prefere a este quando existe.
+# Nunca coloque telefone real aqui: este arquivo sobe para o GitHub.
+#
+# A pasta config/ é montada como volume no Docker: editar e reiniciar o
+# container basta, não precisa rebuild da imagem.
 #
 # O que é segredo (chaves de API, URL da Evolution) mora no .env, não aqui.
 # ---------------------------------------------------------------------------
